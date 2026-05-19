@@ -1035,7 +1035,10 @@ h1.hero-name .dot::after {
   width: 380px; max-width: calc(100vw - 48px);
   min-height: 540px; max-height: calc(100vh - 130px);
   z-index: 250;
-  animation: floatIn .35s cubic-bezier(.22,1,.36,1);
+  /* Override parent .page inactive state (opacity:0; pointer-events:none cascade visually) */
+  opacity: 1 !important;
+  pointer-events: auto !important;
+  animation: floatIn .35s cubic-bezier(.22,1,.36,1) forwards;
   border: 1px solid rgba(77, 216, 255, 0.4);
   box-shadow:
     var(--shadow-2),
@@ -2991,11 +2994,10 @@ const pages = ['home','journey','concepts','horizon','creds','connect'];
 let current = 'home';
 function goPage(name){
   if (name === current) return;
-  // Close floating agent if open
+  // Close floating agent if open (returns terminal to original parent)
   const term = document.getElementById('agentTerminal');
   if (term && term.classList.contains('floating')) {
-    term.classList.remove('floating');
-    document.getElementById('agentBackdrop').classList.remove('shown');
+    closeAgentFloat();
   }
   const curEl = document.getElementById('page-'+current);
   const nextEl = document.getElementById('page-'+name);
@@ -3352,15 +3354,24 @@ function openAgentFloat(){
   const term = document.getElementById('agentTerminal');
   const backdrop = document.getElementById('agentBackdrop');
   if (current === 'home') {
-    // On home, the inline terminal is already visible — just focus it
-    termInput.focus();
-    termInput.scrollIntoView({behavior:'smooth', block:'center'});
-    return;
+    // On home (desktop), the inline terminal is visible — just focus it.
+    // On mobile, inline is hidden by CSS — still float it.
+    if (window.innerWidth > 640) {
+      termInput.focus();
+      termInput.scrollIntoView({behavior:'smooth', block:'center'});
+      return;
+    }
   }
-  // On any other page, float the terminal as overlay
+  // Float the terminal as an overlay on top of the page.
+  // Because the home <section.page> can be inactive (opacity:0) on other pages,
+  // we move the terminal element to <body> root so it isn't affected by parent state.
+  if (term.parentElement !== document.body) {
+    term.dataset.origParent = term.parentElement.id || '';
+    document.body.appendChild(term);
+  }
   term.classList.add('floating');
   backdrop.classList.add('shown');
-  setTimeout(() => termInput.focus(), 380);
+  setTimeout(() => { try { termInput.focus(); } catch(e){} }, 380);
   railLog('agent surfaced → floating', 'info');
 }
 function closeAgentFloat(){
@@ -3368,6 +3379,13 @@ function closeAgentFloat(){
   const backdrop = document.getElementById('agentBackdrop');
   term.classList.remove('floating');
   backdrop.classList.remove('shown');
+  // Return terminal to its original home (inside page-home > dossier) so it appears
+  // there again when the user navigates back to Overview on desktop.
+  const home = document.getElementById('page-home');
+  if (home && term.parentElement === document.body) {
+    const dossierLeft = home.querySelector('.dossier');
+    if (dossierLeft) dossierLeft.appendChild(term);
+  }
 }
 // Legacy name kept for compatibility
 function focusTerminal(){ openAgentFloat(); }
